@@ -96,7 +96,7 @@ function Nav({page,setPage}){
     <nav style={{background:"rgba(247,246,243,0.94)",backdropFilter:"blur(14px)",borderBottom:`1px solid ${T.border}`,padding:"0 52px",display:"flex",alignItems:"center",justifyContent:"space-between",height:54,position:"sticky",top:0,zIndex:1000}}>
       <div onClick={()=>setPage("dashboard")}><Logo/></div>
       <div style={{display:"flex",gap:2}}>
-        {[["dashboard","Dashboard"],["hedgebook","Hedge Book"],["scenarios","Scenarios"],["sourcing","Sourcing Advisor"],["agent","Risk Agent"]].map(([id,label])=>(
+        {[["dashboard","Dashboard"],["hedgebook","Hedge Book"],["scenarios","Scenarios"],["sourcing","Sourcing Advisor"],["agent","Risk Agent"],["dataSources","Data Sources"]].map(([id,label])=>(
           <button key={id} onClick={()=>setPage(id)} className="nb"
             style={{background:"none",border:"none",borderBottom:`1.5px solid ${page===id?T.ink:"transparent"}`,color:page===id?T.ink:T.inkLight,fontWeight:page===id?500:400,fontSize:13,padding:"8px 14px",cursor:"pointer",transition:"color 0.12s",fontFamily:"Inter"}}>
             {label}
@@ -1005,6 +1005,388 @@ function RiskAgent(){
   );
 }
 
+// ─── DATA SOURCES PAGE ───────────────────────────────────────────────────────
+// Drop this component into commodity-risk-hub-v2.jsx
+// 1. Add "dataSources" to the Nav links array
+// 2. Add case "dataSources": return <DataSources/>; to the App switch
+// 3. Paste this component above the App function
+
+function DataSources() {
+  const [activeSection, setActiveSection] = useState("current");
+
+  const dataSources = [
+    {
+      category: "Price Data",
+      sources: [
+        {
+          name: "Corn (CBOT ZC)",
+          status: "live",
+          statusLabel: "Live",
+          provider: "Stooq.com",
+          providerUrl: "https://stooq.com",
+          description: "CBOT Corn Futures daily settlement prices. 12-month history fetched on page load.",
+          frequency: "Daily (end of day)",
+          cost: "Free — no API key required",
+          latency: "~24hr delay (next-day settlement)",
+          productionAlternative: "CME DataMine or Bloomberg B-PIPE for real-time tick data",
+          fields: ["Date", "Open", "High", "Low", "Close", "Volume"],
+          sampleEndpoint: "https://stooq.com/q/d/l/?s=c.us&i=d",
+        },
+        {
+          name: "Soybean Meal (CBOT ZM)",
+          status: "live",
+          statusLabel: "Live",
+          provider: "Stooq.com",
+          providerUrl: "https://stooq.com",
+          description: "CBOT Soybean Meal Futures daily settlement prices. Same feed as corn.",
+          frequency: "Daily (end of day)",
+          cost: "Free — no API key required",
+          latency: "~24hr delay",
+          productionAlternative: "CME DataMine or Quandl/Nasdaq Data Link",
+          fields: ["Date", "Open", "High", "Low", "Close", "Volume"],
+          sampleEndpoint: "https://stooq.com/q/d/l/?s=sm.us&i=d",
+        },
+        {
+          name: "Natural Gas (NYMEX NG)",
+          status: "live",
+          statusLabel: "Live",
+          provider: "Stooq.com",
+          providerUrl: "https://stooq.com",
+          description: "NYMEX Henry Hub Natural Gas Futures daily settlement prices.",
+          frequency: "Daily (end of day)",
+          cost: "Free — no API key required",
+          latency: "~24hr delay",
+          productionAlternative: "CME DataMine, EIA API, or Bloomberg",
+          fields: ["Date", "Open", "High", "Low", "Close", "Volume"],
+          sampleEndpoint: "https://stooq.com/q/d/l/?s=ng.us&i=d",
+        },
+        {
+          name: "Chicken Meal",
+          status: "synthetic",
+          statusLabel: "Synthetic",
+          provider: "Internal — synthetic data",
+          providerUrl: null,
+          description: "No free futures contract exists for chicken meal. Price history is synthetic but calibrated to realistic market structure using USDA weekly price index patterns.",
+          frequency: "Weekly (USDA source) / Static in demo",
+          cost: "Free — USDA Agricultural Marketing Service",
+          latency: "Weekly publication lag",
+          productionAlternative: "USDA AMS weekly Broiler/Fryer Parts report or Urner Barry commercial feed",
+          fields: ["Week ending date", "Weighted average price", "Volume"],
+          sampleEndpoint: "https://www.ams.usda.gov/mnreports/NW_LS711.txt",
+        },
+      ],
+    },
+    {
+      category: "Hedge Book & Positions",
+      sources: [
+        {
+          name: "OTC Swap Positions",
+          status: "synthetic",
+          statusLabel: "Synthetic",
+          provider: "Internal — demo data",
+          description: "Fixed notional, strike price, and tenor for OTC bilateral swaps. In production this comes from your ETRM (Energy Trading and Risk Management) system or a spreadsheet export from your treasury team.",
+          frequency: "Real-time in ETRM / Daily export otherwise",
+          cost: "Internal data — no external cost",
+          productionAlternative: "Openlink Endur, ION Commodities, Triple Point, or manual spreadsheet",
+          fields: ["Commodity", "Quarter", "Notional volume", "Strike price", "Counterparty", "Maturity date"],
+        },
+        {
+          name: "CME Exchange-Traded Futures",
+          status: "synthetic",
+          statusLabel: "Synthetic",
+          provider: "Internal — demo data",
+          description: "Exchange-traded futures positions held via clearing members. In production this comes from your prime broker or FCM (Futures Commission Merchant) position report.",
+          frequency: "Real-time via FCM API / Daily clearing report",
+          cost: "Internal data from your clearing broker",
+          productionAlternative: "FCM daily position report (CSV/API), CME Clearing member portal",
+          fields: ["Commodity", "Contract month", "Quantity (lots)", "Entry price", "Current price", "P&L"],
+        },
+      ],
+    },
+    {
+      category: "Physical Supplier Contracts",
+      sources: [
+        {
+          name: "Fixed Price Contracts",
+          status: "synthetic",
+          statusLabel: "Synthetic",
+          provider: "Internal — demo data",
+          description: "Supplier contracts with fixed price per unit for a defined volume and delivery period. In production this comes from your procurement system or contract management database.",
+          frequency: "Static until amendment",
+          cost: "Internal data",
+          productionAlternative: "SAP MM, Ariba, Coupa, or contract management spreadsheet",
+          fields: ["Supplier", "Commodity", "Fixed price", "Volume", "Delivery period", "Payment terms"],
+        },
+        {
+          name: "Formula-Based Contracts",
+          status: "synthetic",
+          statusLabel: "Synthetic",
+          provider: "Internal — demo data",
+          description: "Contracts priced at a reference index plus/minus a spread. Effective price moves with the market reference. In production this requires connecting to the reference index and applying the contractual formula.",
+          frequency: "Reprices on index publication schedule",
+          cost: "Internal contract data + external index feed",
+          productionAlternative: "CBOT settlement + contract formula, or USDA index + basis",
+          fields: ["Supplier", "Index reference", "Basis (±)", "Volume", "Period"],
+        },
+      ],
+    },
+    {
+      category: "Futures Curve",
+      sources: [
+        {
+          name: "Forward Curve (Corn, Soy, Gas)",
+          status: "synthetic",
+          statusLabel: "Synthetic in demo",
+          provider: "Synthetic — calibrated to market structure",
+          description: "The forward curve shows prices for future delivery months. In the demo this is generated synthetically using realistic contango/backwardation shapes. In production this comes from exchange settlement prices for each contract month.",
+          frequency: "Daily — each contract month settles independently",
+          cost: "Free via Stooq (each contract month is a separate ticker)",
+          productionAlternative: "CME DataMine strip pricing, Bloomberg FWCV function, or ICE forward curves",
+          fields: ["Contract month", "Settlement price", "Open interest", "Volume"],
+        },
+        {
+          name: "Chicken Meal Forward Curve",
+          status: "synthetic",
+          statusLabel: "Always synthetic",
+          provider: "Synthetic — no exchange-traded forward curve exists",
+          description: "Chicken meal has no liquid exchange-traded futures contract. The forward curve is always synthetic, derived from current spot price and a mean-reversion model calibrated to historical seasonality.",
+          frequency: "Recalculated from spot on each page load",
+          cost: "No cost — derived internally",
+          productionAlternative: "Urner Barry commercial price service, USDA forward estimates, or broker OTC quotes",
+          fields: ["Month", "Estimated forward price", "Confidence interval"],
+        },
+      ],
+    },
+    {
+      category: "AI Agent",
+      sources: [
+        {
+          name: "Claude Sonnet (Anthropic)",
+          status: "live",
+          statusLabel: "Live API",
+          provider: "Anthropic",
+          providerUrl: "https://console.anthropic.com",
+          description: "The Risk Agent uses Claude Sonnet with the full portfolio context injected on every message — current prices, hedge positions, open exposure, MTM, and sourcing recommendations. All reasoning happens at query time, not pre-computed.",
+          frequency: "Per user query",
+          cost: "~$0.02 per conversation turn at Sonnet pricing",
+          productionAlternative: "Move API call server-side via Node.js to protect API key. Add conversation history persistence via PostgreSQL.",
+          fields: ["System prompt with portfolio context", "User message", "Conversation history"],
+        },
+      ],
+    },
+  ];
+
+  const productionPipeline = [
+    {
+      step: "01", title: "ERP / ETRM Extract",
+      desc: "Nightly or real-time extract from your trading system (Openlink, ION, Triple Point) or treasury spreadsheet. Pulls hedge positions, contract volumes, and strike prices.",
+      current: "Synthetic data in src/data/",
+      production: "Scheduled Node.js job → REST API or SFTP pull from ETRM",
+      effort: "High — depends on ETRM system",
+    },
+    {
+      step: "02", title: "Market Price Feed",
+      desc: "Daily settlement prices for exchange-traded contracts. Corn, soy, and natural gas already pulling from Stooq. Chicken meal needs USDA weekly report parsing.",
+      current: "Stooq.com (live for 3 of 4)",
+      production: "Same Stooq feed or upgrade to CME DataMine for real-time",
+      effort: "Low — already working",
+    },
+    {
+      step: "03", title: "MTM Calculation",
+      desc: "Calculate mark-to-market on all hedge positions using current settlement prices. Net against open exposure to produce net P&L at risk.",
+      current: "JavaScript engine running in browser",
+      production: "Same JS logic, or move to Python for audit trail and precision",
+      effort: "Low — calculation logic already correct",
+    },
+    {
+      step: "04", title: "PostgreSQL Storage",
+      desc: "Store daily snapshots of positions, prices, MTM, and scenario results. Enables trend analysis, audit trail, and historical comparison.",
+      current: "No persistence — recalculates on each page load",
+      production: "Supabase PostgreSQL via Node.js API layer",
+      effort: "Medium — standard database work",
+    },
+    {
+      step: "05", title: "Auth & Access Control",
+      desc: "Role-based access. Traders see full hedge book. Leadership sees summary dashboard. External auditors see read-only export.",
+      current: "No auth — open to anyone with URL",
+      production: "Email magic link auth via Resend + JWT middleware in Node.js",
+      effort: "Medium — standard auth implementation",
+    },
+    {
+      step: "06", title: "Agent Context Injection",
+      desc: "System prompt automatically rebuilt each session with live portfolio data — current prices, open positions, MTM, alerts. Agent always reasons against current state.",
+      current: "Hardcoded context (canned responses) / or live Claude API",
+      production: "Server-side Claude API call with dynamically built system prompt from database",
+      effort: "Low — already designed correctly",
+    },
+  ];
+
+  return (
+    <div style={{ background: T.bg, minHeight: "calc(100vh - 54px)", fontFamily: "Inter" }}>
+      <div style={{ background: T.white, borderBottom: `1px solid ${T.border}`, padding: "18px 52px" }}>
+        <div style={{ fontFamily: "JetBrains Mono", fontSize: 9.5, color: T.inkLight, letterSpacing: 1.5, marginBottom: 3, textTransform: "uppercase" }}>Data Sources</div>
+        <div style={{ fontFamily: "Sora", fontWeight: 600, fontSize: 19, color: T.ink, letterSpacing: -0.4 }}>What's real, what's synthetic, and what production looks like</div>
+      </div>
+
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 52px", display: "flex", flexDirection: "column", gap: 24 }}>
+
+        {/* Section toggle */}
+        <div style={{ display: "flex", background: T.bgDark, border: `1px solid ${T.border}`, borderRadius: 9, padding: 3, gap: 2, width: "fit-content" }}>
+          {[["current", "Current data sources"], ["pipeline", "Production pipeline"]].map(([id, label]) => (
+            <button key={id} onClick={() => setActiveSection(id)}
+              style={{ background: activeSection === id ? T.white : "transparent", border: "none", padding: "8px 20px", borderRadius: 7, cursor: "pointer", fontSize: 13, fontFamily: "Inter", fontWeight: activeSection === id ? 500 : 400, color: activeSection === id ? T.ink : T.inkLight, transition: "all 0.15s", boxShadow: activeSection === id ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {activeSection === "current" ? (
+          <>
+            {/* Legend */}
+            <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+              <div style={{ fontFamily: "JetBrains Mono", fontSize: 10, color: T.inkLight, letterSpacing: 1, textTransform: "uppercase" }}>Status key:</div>
+              {[
+                { color: T.green, bg: T.greenBg, border: T.green + "33", label: "Live — real data fetched from external source" },
+                { color: T.amber, bg: T.amberBg, border: T.amberBorder, label: "Synthetic — realistic data, not sourced externally" },
+              ].map(s => (
+                <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 5, padding: "2px 9px", fontFamily: "JetBrains Mono", fontSize: 9.5, fontWeight: 600, color: s.color, letterSpacing: 0.5 }}>{s.label.split(" — ")[0]}</div>
+                  <span style={{ fontSize: 12, color: T.inkLight }}>— {s.label.split(" — ")[1]}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Source groups */}
+            {dataSources.map((group, gi) => (
+              <div key={gi} style={{ background: T.white, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+                <div style={{ padding: "14px 22px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ fontFamily: "JetBrains Mono", fontSize: 9.5, color: T.inkLight, letterSpacing: 1.3, textTransform: "uppercase" }}>{group.category}</div>
+                  <div style={{ flex: 1, height: 1, background: T.border }} />
+                  <div style={{ fontFamily: "JetBrains Mono", fontSize: 10, color: T.inkGhost }}>{group.sources.length} source{group.sources.length > 1 ? "s" : ""}</div>
+                </div>
+
+                {group.sources.map((src, si) => (
+                  <div key={si} style={{ padding: "18px 22px", borderBottom: si < group.sources.length - 1 ? `1px solid ${T.border}` : "none" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 32, alignItems: "start" }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
+                          <div style={{ fontFamily: "Sora", fontWeight: 600, fontSize: 14, color: T.ink }}>{src.name}</div>
+                          <div style={{
+                            background: src.status === "live" ? T.greenBg : T.amberBg,
+                            border: `1px solid ${src.status === "live" ? T.green + "44" : T.amberBorder}`,
+                            color: src.status === "live" ? T.green : T.amber,
+                            fontFamily: "JetBrains Mono", fontSize: 9.5, fontWeight: 700,
+                            padding: "2px 9px", borderRadius: 5, letterSpacing: 0.5,
+                            display: "flex", alignItems: "center", gap: 4,
+                          }}>
+                            {src.status === "live" && <div style={{ width: 5, height: 5, borderRadius: "50%", background: T.green, animation: "blink 2s infinite" }} />}
+                            {src.statusLabel}
+                          </div>
+                        </div>
+
+                        <div style={{ fontSize: 13, color: T.inkMid, lineHeight: 1.7, marginBottom: 10 }}>{src.description}</div>
+
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+                          {[
+                            ["Provider", src.provider],
+                            src.frequency && ["Frequency", src.frequency],
+                            src.cost && ["Cost", src.cost],
+                            src.latency && ["Latency", src.latency],
+                          ].filter(Boolean).map(([label, value]) => (
+                            <div key={label}>
+                              <div style={{ fontFamily: "JetBrains Mono", fontSize: 9, color: T.inkGhost, letterSpacing: 1, marginBottom: 2, textTransform: "uppercase" }}>{label}</div>
+                              <div style={{ fontSize: 12, color: T.inkMid, fontWeight: 500 }}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {src.sampleEndpoint && (
+                          <div style={{ marginTop: 10, background: T.bgDark, borderRadius: 6, padding: "7px 10px", fontFamily: "JetBrains Mono", fontSize: 11, color: T.inkLight, letterSpacing: 0.3, wordBreak: "break-all" }}>
+                            {src.sampleEndpoint}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ background: T.bgDark, borderRadius: 9, padding: "14px 16px" }}>
+                        <div style={{ fontFamily: "JetBrains Mono", fontSize: 9, color: T.inkLight, letterSpacing: 1.2, marginBottom: 8, textTransform: "uppercase" }}>Fields available</div>
+                        {src.fields?.map((f, fi) => (
+                          <div key={fi} style={{ display: "flex", gap: 7, marginBottom: 5 }}>
+                            <div style={{ width: 3, height: 3, borderRadius: "50%", background: T.inkGhost, flexShrink: 0, marginTop: 5 }} />
+                            <span style={{ fontFamily: "JetBrains Mono", fontSize: 11, color: T.inkMid }}>{f}</span>
+                          </div>
+                        ))}
+                        <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${T.border}` }}>
+                          <div style={{ fontFamily: "JetBrains Mono", fontSize: 9, color: T.inkLight, letterSpacing: 1.2, marginBottom: 6, textTransform: "uppercase" }}>In production use</div>
+                          <div style={{ fontSize: 12, color: T.inkMid, lineHeight: 1.5 }}>{src.productionAlternative}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            {/* Production pipeline */}
+            <div style={{ background: T.white, border: `1px solid ${T.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 4 }}>
+              <div style={{ fontFamily: "JetBrains Mono", fontSize: 9.5, color: T.inkLight, letterSpacing: 1.3, marginBottom: 8, textTransform: "uppercase" }}>What it takes to connect real data</div>
+              <p style={{ fontSize: 14, color: T.inkMid, lineHeight: 1.75, maxWidth: 680 }}>
+                The calculation engines, scenario models, and agent reasoning in this demo are production-grade. The only thing that changes in production is the data sources — instead of reading from synthetic JS files, the app calls real APIs and a database. The frontend doesn't change.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {productionPipeline.map((step, i) => (
+                <div key={i} style={{ background: T.white, border: `1px solid ${T.border}`, borderRadius: 10, padding: "18px 22px", display: "grid", gridTemplateColumns: "44px 1fr 1fr auto", gap: 20, alignItems: "start" }}>
+                  <div style={{ fontFamily: "JetBrains Mono", fontWeight: 700, fontSize: 20, color: T.inkGhost, lineHeight: 1 }}>{step.step}</div>
+                  <div>
+                    <div style={{ fontFamily: "Sora", fontWeight: 600, fontSize: 14, color: T.ink, marginBottom: 5 }}>{step.title}</div>
+                    <div style={{ fontSize: 13, color: T.inkLight, lineHeight: 1.6 }}>{step.desc}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: "JetBrains Mono", fontSize: 9, color: T.inkLight, letterSpacing: 1.2, marginBottom: 6, textTransform: "uppercase" }}>Current (demo)</div>
+                    <div style={{ fontSize: 12, color: T.inkMid, marginBottom: 12, lineHeight: 1.5 }}>{step.current}</div>
+                    <div style={{ fontFamily: "JetBrains Mono", fontSize: 9, color: T.green, letterSpacing: 1.2, marginBottom: 6, textTransform: "uppercase" }}>Production</div>
+                    <div style={{ fontSize: 12, color: T.inkMid, lineHeight: 1.5 }}>{step.production}</div>
+                  </div>
+                  <div style={{
+                    background: step.effort === "Low — already working" || step.effort === "Low — already designed correctly" || step.effort === "Low — calculation logic already correct" || step.effort.startsWith("Low") ? T.greenBg : step.effort.startsWith("Medium") ? T.amberBg : T.redBg,
+                    color: step.effort.startsWith("Low") ? T.green : step.effort.startsWith("Medium") ? T.amber : T.red,
+                    border: `1px solid ${step.effort.startsWith("Low") ? T.green + "33" : step.effort.startsWith("Medium") ? T.amberBorder : T.redBorder}`,
+                    borderRadius: 7, padding: "6px 12px", fontFamily: "JetBrains Mono", fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", letterSpacing: 0.3, textAlign: "center",
+                  }}>
+                    {step.effort.split(" — ")[0]}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Overall effort summary */}
+            <div style={{ background: T.ink, borderRadius: 12, padding: "24px 28px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 24 }}>
+              {[
+                { label: "Already production-ready", items: ["Price feed (3 of 4 commodities)", "MTM calculation engine", "Scenario stress tester", "Sourcing decision logic", "Agent context architecture"], color: T.green },
+                { label: "Medium effort to connect", items: ["PostgreSQL persistence", "Email authentication", "Server-side API calls", "ETRM data extract (if API exists)", "Daily snapshot scheduler"], color: T.amber },
+                { label: "Depends on your stack", items: ["ETRM/ERP integration", "Real-time price feed (CME)", "Chicken meal data (Urner Barry)", "Role-based access control", "Audit trail exports"], color: "rgba(255,255,255,0.5)" },
+              ].map((col, i) => (
+                <div key={i}>
+                  <div style={{ fontFamily: "JetBrains Mono", fontSize: 9.5, color: col.color, letterSpacing: 1.2, marginBottom: 12, textTransform: "uppercase", fontWeight: 600 }}>{col.label}</div>
+                  {col.items.map((item, j) => (
+                    <div key={j} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                      <span style={{ color: col.color, flexShrink: 0, fontSize: 12 }}>✓</span>
+                      <span style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", lineHeight: 1.4 }}>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App(){
   const[page,setPage]=useState("dashboard");
@@ -1015,6 +1397,7 @@ export default function App(){
       case"scenarios":  return <Scenarios/>;
       case"sourcing":   return <SourcingAdvisor/>;
       case"agent":      return <RiskAgent/>;
+      case"dataSources": return <DataSources/>;
       default:          return <Dashboard setPage={setPage}/>;
     }
   };
