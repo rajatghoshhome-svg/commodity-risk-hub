@@ -917,12 +917,6 @@ function RiskAgent(){
   const avgCoverage=(COMMODITIES.reduce((s,c)=>s+calcExposure(c).avgHedgePct,0)/COMMODITIES.length*100).toFixed(0);
   const totalMTM=COMMODITIES.reduce((s,c)=>s+calcMTM(c),0);
 
-  const CANNED={
-    "What's our total commodity exposure?":`Total annualized commodity exposure: $${totalExposure.toFixed(0)}M gross across all four commodities.\n\nBreakdown:\n— Chicken Meal: $${calcExposure(COMMODITIES[0]).grossExposure.toFixed(0)}M gross | $${calcExposure(COMMODITIES[0]).openExposure.toFixed(0)}M open (28% of COGS)\n— Corn: $${calcExposure(COMMODITIES[1]).grossExposure.toFixed(0)}M gross | $${calcExposure(COMMODITIES[1]).openExposure.toFixed(0)}M open (18% of COGS)\n— Soybean Meal: $${calcExposure(COMMODITIES[2]).grossExposure.toFixed(0)}M gross | $${calcExposure(COMMODITIES[2]).openExposure.toFixed(0)}M open (12% of COGS)\n— Natural Gas: $${calcExposure(COMMODITIES[3]).grossExposure.toFixed(0)}M gross | $${calcExposure(COMMODITIES[3]).openExposure.toFixed(0)}M open (8% of COGS)\n\nTotal open exposure: $${totalOpen.toFixed(0)}M — at risk to spot market moves. Chicken Meal is the largest unprotected position and the priority for additional coverage.`,
-    "Are we protected if chicken prices spike 25%?":`Running that scenario.\n\nAt a 25% spike in chicken meal from $1,840 to $2,300/ton:\n\nGross P&L impact: +$${(calcExposure(COMMODITIES[0]).grossExposure*0.25).toFixed(1)}M\nHedge book offset: -$${(calcExposure(COMMODITIES[0]).hedgedExposure*0.25).toFixed(1)}M\nNet unprotected impact: +$${(calcExposure(COMMODITIES[0]).openExposure*0.25).toFixed(1)}M\n\nPartially protected. Q1 and Q2 hold at 75% and 60% coverage respectively. The vulnerability is Q3 at 40% and Q4 at 20%. A sustained spike creates meaningful H2 2025 cost pressure.\n\nAdding 15–20% additional Q3 coverage at current levels reduces the net impact by approximately $${(calcExposure(COMMODITIES[0]).openExposure*0.25*0.175).toFixed(1)}M. The 89-day window before Q3 coverage drops makes this time-sensitive.`,
-    "Explain our hedge book to someone who doesn't know derivatives":`Happy to translate.\n\nThink of our hedge book as price insurance. We've pre-agreed prices for a portion of the commodities we'll need to buy — so even if market prices spike, we pay the locked-in price for that hedged portion.\n\nIn practice: for Corn, we've locked in 90% of our Q1 needs at $4.60/bushel. Spot corn is $4.85. So on 90% of our Q1 corn we're paying $4.60 instead of $4.85 — saving $0.25/bushel on that volume. That's the hedge working.\n\nThe 10% we didn't hedge? We pay whatever the market price is at the time of purchase.\n\nThe risk is always the open portion — what we haven't hedged yet. Right now the most exposed position is Chicken Meal in Q4, where only 20% is covered. If prices stay elevated, we're paying spot price on 80% of our Q4 chicken needs.\n\nThe job of this team: decide when to lock in more coverage, and at what price it's worth doing so.`,
-  };
-
   const sugg=[
     {cat:"Portfolio",q:"What's our total commodity exposure?"},
     {cat:"Portfolio",q:"What's our mark-to-market position today?"},
@@ -938,10 +932,51 @@ function RiskAgent(){
   const send=async(q)=>{
     const msg=q||inp.trim();
     if(!msg||load)return;
-    setInp(""); setMsgs(m=>[...m,{role:"user",content:msg}]); setLoad(true);
-    await new Promise(r=>setTimeout(r,900+Math.random()*400));
-    const reply=CANNED[msg]||`I've reviewed the current commodity portfolio.\n\nTotal exposure: $${totalExposure.toFixed(0)}M with average hedge coverage of ${avgCoverage}%. Portfolio MTM is ${totalMTM>=0?"+":""}$${totalMTM.toFixed(1)}M. The most urgent open position is Chicken Meal Q3 at 40% coverage in 89 days.\n\nWould you like me to focus on a specific commodity, quarter, scenario analysis, or the sourcing decision framework?`;
-    setMsgs(m=>[...m,{role:"assistant",content:reply}]); setLoad(false);
+    setInp("");
+    const newMsgs=[...msgs,{role:"user",content:msg}];
+    setMsgs(newMsgs);
+    setLoad(true);
+    try{
+      const commConfig=COMM_CONFIG.map(({id,name,ticker,unit,currentPrice,hedgePrice,category,percentOfCOGS,annualExposureM,hedgeCoverage,description})=>({id,name,ticker,unit,currentPrice,hedgePrice,category,percentOfCOGS,annualExposureM,hedgeCoverage,description}));
+      const commData=COMMODITIES.map(({id,name,unit,category,currentPrice,priorYearPrice,annualVolumeTons,annualVolumeMMBtu,percentOfCOGS,hedgeBook,supplierContracts})=>({id,name,unit,category,currentPrice,priorYearPrice,annualVolumeTons,annualVolumeMMBtu,percentOfCOGS,hedgeBook,supplierContracts}));
+      const systemPrompt=`You are the Commodity Risk Agent for Uranus PetCare, a specialty pet food manufacturer. You advise the treasury and procurement teams on commodity price risk, hedge book management, and sourcing decisions.
+
+## COMM_CONFIG
+${JSON.stringify(commConfig,null,2)}
+
+## COMMODITIES (with hedge book positions and supplier contracts)
+${JSON.stringify(commData,null,2)}
+
+## Instructions
+- Always derive every number and conclusion directly from the data above. Never invent or estimate figures not present in the data.
+- Calibrate your explanation style to the sophistication level implied by each question: use precise financial and derivatives terminology (delta, notional, basis risk, mark-to-market) for quant-style questions; use plain English analogies for questions that appear to come from executives or non-specialists.
+- Do not pre-write conclusions — reason fresh from the data for each question.`;
+      const res=await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",
+        headers:{
+          "x-api-key":import.meta.env.VITE_CLAUDE_API_KEY,
+          "anthropic-version":"2023-06-01",
+          "anthropic-dangerous-direct-browser-access":"true",
+          "content-type":"application/json",
+        },
+        body:JSON.stringify({
+          model:"claude-sonnet-4-5",
+          max_tokens:1024,
+          system:systemPrompt,
+          messages:newMsgs,
+        }),
+      });
+      if(!res.ok){
+        const err=await res.text();
+        throw new Error(`API error ${res.status}: ${err}`);
+      }
+      const data=await res.json();
+      const reply=data.content[0].text;
+      setMsgs(m=>[...m,{role:"assistant",content:reply}]);
+    }catch(e){
+      setMsgs(m=>[...m,{role:"assistant",content:`Sorry, I couldn't reach the API: ${e.message}`}]);
+    }
+    setLoad(false);
     setTimeout(()=>btm.current?.scrollIntoView({behavior:"smooth"}),100);
   };
 
